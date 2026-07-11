@@ -1,0 +1,6 @@
+{
+  "name": "Threat Intelligence Aggregation Platform",
+  "description": "Enterprise-grade threat intelligence aggregation, RAG retrieval, and collaborative multi-agent reasoning.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
