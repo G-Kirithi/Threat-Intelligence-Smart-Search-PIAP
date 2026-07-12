@@ -547,31 +547,28 @@ export default function App() {
           const lines = buffer.split("\n");
           buffer = lines.pop() || "";
 
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            if (line.startsWith("event: token")) {
-              const dataLine = lines[lines.indexOf(line) + 1] || "";
-              if (dataLine.startsWith("data: ")) {
+          // Parse SSE-style lines sequentially to avoid indexOf collisions
+          for (let i = 0; i < lines.length; i++) {
+            const raw = lines[i];
+            if (!raw) continue;
+            const lineTrim = raw.trim();
+            if (!lineTrim) continue;
+
+            if (lineTrim.startsWith("event:")) {
+              const eventType = lineTrim.replace("event:", "").trim();
+              const dataLine = (lines[i + 1] || "").trim();
+              if (dataLine.startsWith("data:")) {
                 try {
-                  const payload = JSON.parse(dataLine.replace("data: ", ""));
-                  setStreamingText((prev) => prev + payload.text);
-                } catch (e) {}
-              }
-            } else if (line.startsWith("event: complete")) {
-              const dataLine = lines[lines.indexOf(line) + 1] || "";
-              if (dataLine.startsWith("data: ")) {
-                try {
-                  const payload = JSON.parse(dataLine.replace("data: ", ""));
-                  setStreamingMetadata(payload);
-                } catch (e) {}
-              }
-            } else if (line.startsWith("event: search_metadata")) {
-              const dataLine = lines[lines.indexOf(line) + 1] || "";
-              if (dataLine.startsWith("data: ")) {
-                try {
-                  const payload = JSON.parse(dataLine.replace("data: ", ""));
-                  setStreamingMetadata((prev: any) => ({ ...prev, ...payload }));
-                } catch (e) {}
+                  const payload = JSON.parse(dataLine.replace(/^data:\s*/, ""));
+                  if (eventType === "token") {
+                    setStreamingText((prev) => prev + (payload.text || ""));
+                  } else if (eventType === "search_metadata" || eventType === "complete") {
+                    setStreamingMetadata((prev: any) => ({ ...prev, ...payload }));
+                  }
+                } catch (e) {
+                  // ignore malformed chunk
+                }
+                i++; // skip the data line we've just consumed
               }
             }
           }
