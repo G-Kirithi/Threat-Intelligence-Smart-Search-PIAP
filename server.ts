@@ -32,8 +32,8 @@ async function startServer() {
   const PORT = 3000;
 
   // JSON and URL-encoded body parsers
-  // Allow parsing of a broader set of content-types and increase limits for robustness behind proxies
-  app.use(express.json({ limit: "2mb", type: "*/*" }));
+  // Use default express.json content-type handling to avoid parse errors on non-JSON bodies
+  app.use(express.json({ limit: "2mb" }));
   app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 
   // Fallback raw body parser: if JSON parsing didn't populate req.body, attempt to parse raw payload
