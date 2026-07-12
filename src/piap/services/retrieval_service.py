@@ -7,6 +7,7 @@ from piap.storage.sqlite_store import SQLiteStore
 from piap.storage.chroma_store import ChromaStore
 from piap.services.embedding_service import EmbeddingService
 from piap.utils.logging import logger
+import asyncio
 
 class RetrievalService:
     """
