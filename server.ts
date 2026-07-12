@@ -31,28 +31,21 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // JSON and URL-encoded body parsers
-  // Use default express.json content-type handling to avoid parse errors on non-JSON bodies
-  app.use(express.json({ limit: "2mb" }));
-  app.use(express.urlencoded({ extended: true, limit: "2mb" }));
-
-  // Fallback raw body parser: if JSON parsing didn't populate req.body, attempt to parse raw payload
+  // Fallback raw body parser: read raw payload early and attempt to parse JSON
+  // This runs before any built-in parsers to avoid middleware 400s when proxies
+  // strip or change content-types.
   app.use((req, res, next) => {
-    // Only attempt for methods that typically carry payloads
     if (req.method === "POST" || req.method === "PUT" || req.method === "PATCH") {
-      // If body already parsed, continue
-      if (req.body && Object.keys(req.body).length > 0) return next();
-
       let data = "";
       req.on("data", chunk => {
-        try { data += chunk.toString(); } catch (e) { /* ignore */ }
+        try { data += chunk.toString(); } catch (e) { }
       });
       req.on("end", () => {
         if (!data) return next();
         try {
-          req.body = JSON.parse(data);
+          const parsed = JSON.parse(data);
+          req.body = parsed;
         } catch (e) {
-          // If not JSON, attach raw text for handlers that can handle it
           (req as any).rawBody = data;
         }
         return next();
@@ -61,6 +54,9 @@ async function startServer() {
       return next();
     }
   });
+
+  // URL-encoded parser (keeps compatibility with form POSTs)
+  app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 
   console.log("[Manager] Booting Node.js-based unified threat intelligence backend...");
 
