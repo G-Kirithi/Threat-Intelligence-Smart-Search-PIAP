@@ -1301,10 +1301,10 @@ export default function App() {
                               <div className="space-y-1">
                                 <div className="flex justify-between text-slate-400">
                                   <span>Reciprocal Rank Fusion (RRF):</span>
-                                  <span className="text-emerald-400 font-bold">{match.rrf_score.toFixed(6)}</span>
+                                  <span className="text-emerald-400 font-bold">{(match.rrf_score ?? 0).toFixed(6)}</span>
                                 </div>
                                 <div className="w-full bg-slate-800 h-1 rounded-full overflow-hidden">
-                                  <div className="bg-emerald-400 h-1 rounded-full" style={{ width: `${(match.rrf_score * 3000)}%` }}></div>
+                                  <div className="bg-emerald-400 h-1 rounded-full" style={{ width: `${((match.rrf_score ?? 0) * 3000)}%` }}></div>
                                 </div>
                               </div>
 
@@ -1312,10 +1312,10 @@ export default function App() {
                               <div className="space-y-1">
                                 <div className="flex justify-between text-slate-400">
                                   <span>FTS5 Lexical Word-Match Similarity:</span>
-                                  <span className="text-blue-400 font-bold">{(match.lexical_score * 100).toFixed(1)}%</span>
+                                  <span className="text-blue-400 font-bold">{((match.lexical_score ?? 0) * 100).toFixed(1)}%</span>
                                 </div>
                                 <div className="w-full bg-slate-800 h-1 rounded-full overflow-hidden">
-                                  <div className="bg-blue-400 h-1 rounded-full" style={{ width: `${match.lexical_score * 100}%` }}></div>
+                                  <div className="bg-blue-400 h-1 rounded-full" style={{ width: `${((match.lexical_score ?? 0) * 100)}%` }}></div>
                                 </div>
                               </div>
 
@@ -1323,10 +1323,10 @@ export default function App() {
                               <div className="space-y-1">
                                 <div className="flex justify-between text-slate-400">
                                   <span>ChromaDB Cosine Vector Similarity:</span>
-                                  <span className="text-amber-400 font-bold">{(match.vector_score * 100).toFixed(1)}%</span>
+                                  <span className="text-amber-400 font-bold">{((match.vector_score ?? 0) * 100).toFixed(1)}%</span>
                                 </div>
                                 <div className="w-full bg-slate-800 h-1 rounded-full overflow-hidden">
-                                  <div className="bg-amber-400 h-1 rounded-full" style={{ width: `${match.vector_score * 100}%` }}></div>
+                                  <div className="bg-amber-400 h-1 rounded-full" style={{ width: `${((match.vector_score ?? 0) * 100)}%` }}></div>
                                 </div>
                               </div>
                             </div>
@@ -1352,18 +1352,18 @@ export default function App() {
                               <span className="text-[10px] text-slate-500">ID: {match.id}</span>
                             </div>
 
-                            <div className="space-y-2 text-[11px]">
+                              <div className="space-y-2 text-[11px]">
                               <div className="flex justify-between text-slate-400">
                                 <span>RRF Score:</span>
-                                <span className="text-emerald-400 font-bold">{match.rrf_score.toFixed(6)}</span>
+                                <span className="text-emerald-400 font-bold">{(match.rrf_score ?? 0).toFixed(6)}</span>
                               </div>
                               <div className="flex justify-between text-slate-400">
                                 <span>Lexical FTS5:</span>
-                                <span className="text-blue-400 font-bold">{(match.lexical_score * 100).toFixed(1)}%</span>
+                                <span className="text-blue-400 font-bold">{((match.lexical_score ?? 0) * 100).toFixed(1)}%</span>
                               </div>
                               <div className="flex justify-between text-slate-400">
                                 <span>Vector Cosine:</span>
-                                <span className="text-amber-400 font-bold">{(match.vector_score * 100).toFixed(1)}%</span>
+                                <span className="text-amber-400 font-bold">{((match.vector_score ?? 0) * 100).toFixed(1)}%</span>
                               </div>
                             </div>
 
