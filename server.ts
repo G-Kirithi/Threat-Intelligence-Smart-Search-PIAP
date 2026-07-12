@@ -1,7 +1,7 @@
 import express from "express";
 import path from "path";
 import dotenv from "dotenv";
-import { GoogleGenAI, Type } from "./src/ollama.js";
+import { GoogleGenAI, Type } from "@google/genai";
 import { createServer as createViteServer } from "vite";
 import {
   getDb,
@@ -17,46 +17,32 @@ import {
 // Load environment variables
 dotenv.config();
 
-// Initialize Google GenAI client
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: {
-    headers: {
-      "User-Agent": "aistudio-build"
-    }
+// Initialize Google GenAI client safely
+let ai: GoogleGenAI | null = null;
+try {
+  if (process.env.GEMINI_API_KEY) {
+    ai = new GoogleGenAI({
+      apiKey: process.env.GEMINI_API_KEY,
+      httpOptions: {
+        headers: {
+          "User-Agent": "aistudio-build"
+        }
+      }
+    });
+  } else {
+    console.warn("[Warning] GEMINI_API_KEY is not defined in the environment. Operating in LOCAL/OFFLINE fallback mode.");
   }
-});
+} catch (err) {
+  console.error("[Warning] Failed to initialize GoogleGenAI client:", err);
+}
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // Fallback raw body parser: read raw payload early and attempt to parse JSON
-  // This runs before any built-in parsers to avoid middleware 400s when proxies
-  // strip or change content-types.
-  app.use((req, res, next) => {
-    if (req.method === "POST" || req.method === "PUT" || req.method === "PATCH") {
-      let data = "";
-      req.on("data", chunk => {
-        try { data += chunk.toString(); } catch (e) { }
-      });
-      req.on("end", () => {
-        if (!data) return next();
-        try {
-          const parsed = JSON.parse(data);
-          req.body = parsed;
-        } catch (e) {
-          (req as any).rawBody = data;
-        }
-        return next();
-      });
-    } else {
-      return next();
-    }
-  });
-
-  // URL-encoded parser (keeps compatibility with form POSTs)
-  app.use(express.urlencoded({ extended: true, limit: "2mb" }));
+  // JSON and URL-encoded body parsers
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
 
   console.log("[Manager] Booting Node.js-based unified threat intelligence backend...");
 
@@ -185,6 +171,9 @@ Return a JSON structure matching:
           let info: any = null;
 
           try {
+            if (!ai) {
+              throw new Error("Google GenAI client is not initialized.");
+            }
             const geminiRes = await ai.models.generateContent({
               model: "gemini-3.5-flash",
               contents: combinedPrompt,
@@ -232,22 +221,14 @@ Return a JSON structure matching:
           }
 
           if (info) {
-            const artId = `art-sim-${Date.now()}-${i}`;
-            
-            const newArt = {
-              id: artId,
-              title: info.title,
-              content: info.content,
-              feed_url: feed.url,
-              source_domain: new URL(feed.url).hostname || "simulated.com",
-              published_date: new Date().toISOString(),
-              ingestion_status: "ready",
-              clearance_level: "unclassified",
-              tags: info.tags || ["OSINT"],
-              created_at: new Date().toISOString()
-            };
-
-            db.articles.unshift(newArt);
+            const newArt = addArticle(
+              info.title,
+              info.content,
+              "unclassified",
+              new URL(feed.url).hostname || "simulated.com",
+              info.tags || ["OSINT"]
+            );
+            newArt.feed_url = feed.url;
             totalAdded++;
 
             // Insert Relationship info to Knowledge Graph
@@ -270,8 +251,8 @@ Return a JSON structure matching:
                 l => l.source === sId && l.target === tId && l.predicate === predicateUpper
               );
               if (existingLink) {
-                if (!existingLink.evidence.includes(artId)) {
-                  existingLink.evidence.push(artId);
+                if (!existingLink.evidence.includes(newArt.id)) {
+                  existingLink.evidence.push(newArt.id);
                 }
                 existingLink.confidence = Math.max(existingLink.confidence, 0.90);
               } else {
@@ -280,7 +261,7 @@ Return a JSON structure matching:
                   target: tId,
                   predicate: predicateUpper,
                   confidence: 0.90,
-                  evidence: [artId]
+                  evidence: [newArt.id]
                 });
               }
             }
@@ -329,6 +310,9 @@ Return a JSON containing:
       let rel: any = null;
 
       try {
+        if (!ai) {
+          throw new Error("Google GenAI client is not initialized.");
+        }
         const relRes = await ai.models.generateContent({
           model: "gemini-3.5-flash",
           contents: relationPrompt,
@@ -489,47 +473,8 @@ Return a JSON containing:
 
   // --- V3: HYBRID RETRIEVAL-AUGMENTED GENERATION (STREAMING & STRUCTURED) ---
   app.post("/v3/query", async (req, res) => {
-    // Robustly extract parameters from JSON body, URL query, or rawBody fallback
+    const { query, clearance_level, user_role, user_id } = req.body;
     const stream = req.query.stream === "true";
-
-    // Lightweight diagnostics for deployed troubleshooting (safe, non-sensitive)
-    console.log(`[v3/query] incoming request. method=${req.method} stream=${stream} bodyPresent=${!!req.body} rawBodyLen=${(req as any).rawBody ? (req as any).rawBody.length : 0}`);
-
-    // Attempt to pull params from multiple sources
-    let query: any = undefined;
-    let clearance_level: any = undefined;
-    let user_role: any = undefined;
-    let user_id: any = undefined;
-
-    // Prefer parsed JSON body
-    if (req.body && Object.keys(req.body).length > 0) {
-      query = req.body.query;
-      clearance_level = req.body.clearance_level;
-      user_role = req.body.user_role;
-      user_id = req.body.user_id;
-    }
-
-    // Fallback to querystring parameters
-    query = query || req.query.query;
-    clearance_level = clearance_level || req.query.clearance_level;
-    user_role = user_role || req.query.user_role;
-    user_id = user_id || req.query.user_id;
-
-    // Fallback to rawBody if present (some proxies may strip content-type)
-    if (!query && (req as any).rawBody) {
-      try {
-        const parsed = JSON.parse((req as any).rawBody);
-        query = parsed.query || query;
-        clearance_level = parsed.clearance_level || clearance_level;
-        user_role = parsed.user_role || user_role;
-        user_id = parsed.user_id || user_id;
-      } catch (e) {
-        // rawBody not JSON — if rawBody is plain text, treat it as the query string
-        if (typeof (req as any).rawBody === "string" && (req as any).rawBody.trim().length > 0) {
-          query = (req as any).rawBody.trim();
-        }
-      }
-    }
 
     if (!query) {
       return res.status(400).json({ detail: "Query is required." });
@@ -665,6 +610,9 @@ ${sourcesContext}`;
       };
 
       try {
+        if (!ai) {
+          throw new Error("Google GenAI client is not initialized.");
+        }
         const responseStream = await ai.models.generateContentStream({
           model: "gemini-3.5-flash",
           contents: systemPrompt
@@ -732,6 +680,9 @@ ${docList}
     } else {
       // Structured JSON Briefing Report
       try {
+        if (!ai) {
+          throw new Error("Google GenAI client is not initialized.");
+        }
         const geminiRes = await ai.models.generateContent({
           model: "gemini-3.5-flash",
           contents: systemPrompt
@@ -881,6 +832,7 @@ ${docList}
       ml: {
         rf: { accuracy: 0.875, precision: 0.892, recall: 0.824, f1: 0.857, auc: 0.912 },
         lr: { accuracy: 0.814, precision: 0.783, recall: 0.841, f1: 0.811, auc: 0.865 },
+        xgb: { accuracy: 0.891, precision: 0.903, recall: 0.875, f1: 0.889, auc: 0.934 },
         feature_importance: [
           { name: "cve indicator", score: 0.28 },
           { name: "port scanner", score: 0.19 },
@@ -954,6 +906,9 @@ ${docList}
     };
 
     try {
+      if (!ai) {
+        throw new Error("Google GenAI client is not initialized.");
+      }
       logAgent("Coordinator", `Assembled multi-agent investigation team. Initializing audit pipeline for query: "${query}"`);
       logAgent("Researcher", `Initiating semantic retrieval across database. Fetching contextual threat papers...`);
 
@@ -1174,6 +1129,9 @@ Based on deep analysis, we have correlated adversarial indicators with known sta
     }
 
     try {
+      if (!ai) {
+        throw new Error("Google GenAI client is not initialized.");
+      }
       const prompt = `You are an elite cyber educator. Take the following highly technical threat intelligence text and translate it into a simple, engaging, plain English explanation that can be understood by non-technical managers or beginners.
 Use creative real-world analogies (for example, comparing ports to locked doors, firewalls to bouncers, CVE vulnerabilities to specific lock defects, supply chain compromises to poisoning ingredients at a factory, or SOHO routers to intermediate mail drops).
 

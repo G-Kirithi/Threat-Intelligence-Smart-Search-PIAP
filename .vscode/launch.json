@@ -1,0 +1,31 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch Unified Applet (Node.js/Vite)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "presentation": {
+        "hidden": false,
+        "group": "primary"
+      }
+    },
+    {
+      "name": "Launch Python FastAPI Server",
+      "type": "python",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["piap.main:app", "--host", "127.0.0.1", "--port", "8000", "--reload"],
+      "jinja": true,
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src",
+        "GEMINI_API_KEY": "YOUR_GEMINI_API_KEY"
+      },
+      "console": "integratedTerminal"
+    }
+  ]
+}

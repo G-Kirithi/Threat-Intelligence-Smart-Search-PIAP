@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { classifyThreatDocument } from "./classifiers.js";
 
 // Define TypeScript interfaces matching App.tsx expectation
 export interface FeedItem {
@@ -346,23 +347,35 @@ export function addArticle(title: string, content: string, clearance: string, so
   }
 
   // Topic
-  let topic = "Threat Intelligence Observation";
-  if (lowerContent.includes("backdoor") || lowerContent.includes("supply-chain") || lowerContent.includes("supply chain")) {
-    topic = "Supply Chain Integrity & Backdoors";
-  } else if (lowerContent.includes("infrastructure") || lowerContent.includes("power") || lowerContent.includes("water") || lowerContent.includes("grid")) {
-    topic = "Critical Infrastructure Targeting";
-  } else if (lowerContent.includes("vpn") || lowerContent.includes("router") || lowerContent.includes("gateway")) {
-    topic = "Edge Network Exploitation";
-  } else if (lowerContent.includes("active directory") || lowerContent.includes("credential") || lowerContent.includes("password")) {
-    topic = "Identity & Access Directory Control";
+  // Run real local ML/DL models to obtain topic, sentiment, risk level and priority
+  let mlResult: any = null;
+  try {
+    mlResult = classifyThreatDocument(title, content);
+  } catch (err) {
+    console.error("ML Classification error, falling back to heuristics:", err);
+  }
+
+  let topic = mlResult ? mlResult.topic : "Threat Intelligence Observation";
+  if (!mlResult) {
+    if (lowerContent.includes("backdoor") || lowerContent.includes("supply-chain") || lowerContent.includes("supply chain")) {
+      topic = "Supply Chain Integrity & Backdoors";
+    } else if (lowerContent.includes("infrastructure") || lowerContent.includes("power") || lowerContent.includes("water") || lowerContent.includes("grid")) {
+      topic = "Critical Infrastructure Targeting";
+    } else if (lowerContent.includes("vpn") || lowerContent.includes("router") || lowerContent.includes("gateway")) {
+      topic = "Edge Network Exploitation";
+    } else if (lowerContent.includes("active directory") || lowerContent.includes("credential") || lowerContent.includes("password")) {
+      topic = "Identity & Access Directory Control";
+    }
   }
 
   // Sentiment
-  let sentiment = "Neutral security bulletin";
-  if (lowerContent.includes("critical") || lowerContent.includes("zero-day") || lowerContent.includes("active exploitation")) {
-    sentiment = "Highly Threatening / Active Alert";
-  } else if (lowerContent.includes("stealth") || lowerContent.includes("reconnaissance") || lowerContent.includes("pre-positioning")) {
-    sentiment = "Adversarial pre-positioning suspected";
+  let sentiment = mlResult ? mlResult.sentiment : "Neutral security bulletin";
+  if (!mlResult) {
+    if (lowerContent.includes("critical") || lowerContent.includes("zero-day") || lowerContent.includes("active exploitation")) {
+      sentiment = "Highly Threatening / Active Alert";
+    } else if (lowerContent.includes("stealth") || lowerContent.includes("reconnaissance") || lowerContent.includes("pre-positioning")) {
+      sentiment = "Adversarial pre-positioning suspected";
+    }
   }
 
   // Policy Tags
@@ -381,20 +394,22 @@ export function addArticle(title: string, content: string, clearance: string, so
   }
 
   // Risk Level & Priority
-  let risk_level = "Medium";
-  let classification_priority = "Medium";
-  if (lowerContent.includes("zero-day") || lowerContent.includes("active exploitation") || lowerContent.includes("cve")) {
-    risk_level = "Critical";
-    classification_priority = "High";
-  } else if (lowerContent.includes("volt typhoon") || lowerContent.includes("lazarus") || lowerContent.includes("infrastructure")) {
-    risk_level = "High";
-    classification_priority = "High";
-  } else if (lowerContent.includes("reconnaissance") || lowerContent.includes("scanning")) {
-    risk_level = "Medium";
-    classification_priority = "Medium";
-  } else {
-    risk_level = "Low";
-    classification_priority = "Low";
+  let risk_level = mlResult ? mlResult.risk_level : "Medium";
+  let classification_priority = mlResult ? mlResult.classification_priority : "Medium";
+  if (!mlResult) {
+    if (lowerContent.includes("zero-day") || lowerContent.includes("active exploitation") || lowerContent.includes("cve")) {
+      risk_level = "Critical";
+      classification_priority = "High";
+    } else if (lowerContent.includes("volt typhoon") || lowerContent.includes("lazarus") || lowerContent.includes("infrastructure")) {
+      risk_level = "High";
+      classification_priority = "High";
+    } else if (lowerContent.includes("reconnaissance") || lowerContent.includes("scanning")) {
+      risk_level = "Medium";
+      classification_priority = "Medium";
+    } else {
+      risk_level = "Low";
+      classification_priority = "Low";
+    }
   }
 
   const newArt: ArticleItem = {

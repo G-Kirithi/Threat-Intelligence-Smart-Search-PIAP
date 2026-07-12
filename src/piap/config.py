@@ -29,14 +29,5 @@ LOG_FILE = LOG_DIR / "piap.log"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 APP_URL = os.getenv("APP_URL", "http://localhost:3000")
 
-# Ollama API configurations
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
-OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
-
-# Use Mock Mode for local offline testing (true/false)
-USE_MOCK = os.getenv("USE_MOCK", "false").lower() == "true"
-
-
 # Vector DB clearance settings
 DEFAULT_CLEARANCE_LEVEL = "unclassified"

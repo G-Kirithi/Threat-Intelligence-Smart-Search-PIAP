@@ -7,9 +7,10 @@ import json
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
-from piap.utils.ollama_client import genai, types
+from google import genai
+from google.genai import types
 
-from piap.config import GEMINI_API_KEY, USE_MOCK
+from piap.config import GEMINI_API_KEY
 from piap.ingestion.preprocessing import preprocess_text
 from piap.ingestion.chunking import chunk_document
 from piap.storage.sqlite_store import SQLiteStore, DBArticle, DBChunk
@@ -48,10 +49,11 @@ class PipelineManager:
 
     def _get_ai_client(self) -> genai.Client:
         """
-        Lazy loader for the Ollama GenAI client wrapper.
+        Lazy loader for the GenAI client.
         """
         if self._ai_client is None:
-            self._ai_client = genai.Client()
+            key = GEMINI_API_KEY or "DUMMY_KEY_FOR_TESTS"
+            self._ai_client = genai.Client(api_key=key)
         return self._ai_client
 
     async def extract_knowledge_graph_triples(self, text_content: str) -> List[RelationshipTriple]:
@@ -61,9 +63,9 @@ class PipelineManager:
         if not text_content or not text_content.strip():
             return []
 
-        # If mock mode enabled or offline, return clean heuristics
-        if USE_MOCK:
-            logger.warning("Using offline heuristic triple extractor due to USE_MOCK=True.")
+        # If dummy key or offline, return clean heuristics
+        if "DUMMY_KEY" in (GEMINI_API_KEY or "DUMMY_KEY"):
+            logger.warning("Using offline heuristic triple extractor due to missing GEMINI_API_KEY.")
             return [
                 RelationshipTriple(
                     subject="Cyber Threat Actor",

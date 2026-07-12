@@ -2,15 +2,15 @@
 Synthesis service utilizing Gemini 2.5 Flash for evidence-bounded intelligence report generation.
 """
 
-import asyncio
 import json
 import time
 from typing import Any, AsyncGenerator, Dict, List, Optional
 from pydantic import BaseModel, Field
 
-from piap.utils.ollama_client import genai, types
+from google import genai
+from google.genai import types
 
-from piap.config import GEMINI_API_KEY, USE_MOCK
+from piap.config import GEMINI_API_KEY
 from piap.models.report import Report, Finding, Contradiction
 from piap.utils.logging import logger
 
@@ -23,10 +23,11 @@ class SynthesisService:
 
     def _get_client(self) -> genai.Client:
         """
-        Lazy-initializes the Ollama GenAI client wrapper.
+        Lazy-initializes the GenAI client.
         """
         if self._ai_client is None:
-            self._ai_client = genai.Client()
+            key = GEMINI_API_KEY or "DUMMY_KEY_FOR_TESTS"
+            self._ai_client = genai.Client(api_key=key)
         return self._ai_client
 
     def _build_context_str(self, chunks: List[Dict[str, Any]]) -> str:
@@ -108,9 +109,9 @@ class SynthesisService:
             f"{context_str}"
         )
 
-        # If mock mode enabled or offline, return clean fallback
-        if USE_MOCK:
-            logger.warning("Using offline mock synthesis generator due to USE_MOCK=True.")
+        # If dummy key or offline, return clean fallback
+        if "DUMMY_KEY" in (GEMINI_API_KEY or "DUMMY_KEY"):
+            logger.warning("Using offline mock synthesis generator due to missing GEMINI_API_KEY.")
             return {
                 "id": f"rep-{int(time.time())}",
                 "title": f"Synthesis: {query}",
@@ -219,8 +220,8 @@ class SynthesisService:
             return
 
         # Fallback offline streaming
-        if USE_MOCK:
-            logger.warning("Using mock streaming generator due to USE_MOCK=True.")
+        if "DUMMY_KEY" in (GEMINI_API_KEY or "DUMMY_KEY"):
+            logger.warning("Using mock streaming generator due to missing GEMINI_API_KEY.")
             mock_text = f"Factual synthesis answer for query '{query}' based on retrieved evidence of {len(chunks)} chunks."
             for word in mock_text.split():
                 yield f"event: token\ndata: {json.dumps({'text': word + ' '})}\n\n"

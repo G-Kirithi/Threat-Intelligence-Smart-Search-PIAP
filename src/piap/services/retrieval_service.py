@@ -7,7 +7,6 @@ from piap.storage.sqlite_store import SQLiteStore
 from piap.storage.chroma_store import ChromaStore
 from piap.services.embedding_service import EmbeddingService
 from piap.utils.logging import logger
-import asyncio
 
 class RetrievalService:
     """
@@ -41,29 +40,27 @@ class RetrievalService:
 
         # 1. Dense Semantic Search
         dense_results = []
+        try:
+            query_vector = await self.embedding.get_embedding(query)
+            dense_results = self.chroma.similarity_search(
+                query_vector=query_vector,
+                limit=limit * 2,  # Fetch more to allow clean merging
+                clearance_level=clearance_level
+            )
+            logger.info(f"Dense semantic retrieval fetched {len(dense_results)} candidate chunks.")
+        except Exception as e:
+            logger.error(f"Dense semantic search failed during hybrid retrieve: {e}")
+
+        # 2. Lexical SQLite FTS5 Search
         lexical_results = []
         try:
-            lexical_task = asyncio.create_task(self.sqlite.fts_lexical_search(
+            lexical_results = await self.sqlite.fts_lexical_search(
                 query=query,
                 limit=limit * 2
-            ))
-            embedding_task = asyncio.create_task(self.embedding.get_embedding(query))
-
-            lexical_results = await lexical_task
+            )
             logger.info(f"Lexical FTS5 retrieval fetched {len(lexical_results)} candidate chunks.")
-
-            try:
-                query_vector = await embedding_task
-                dense_results = self.chroma.similarity_search(
-                    query_vector=query_vector,
-                    limit=limit * 2,  # Fetch more to allow clean merging
-                    clearance_level=clearance_level
-                )
-                logger.info(f"Dense semantic retrieval fetched {len(dense_results)} candidate chunks.")
-            except Exception as e:
-                logger.error(f"Dense semantic search failed during hybrid retrieve: {e}")
         except Exception as e:
-            logger.error(f"Hybrid retrieval failed: {e}")
+            logger.error(f"Lexical search failed during hybrid retrieve: {e}")
 
         # 3. Reciprocal Rank Fusion (RRF)
         # RRF Score = Sum(1 / (k + rank))

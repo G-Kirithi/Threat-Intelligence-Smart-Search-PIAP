@@ -196,12 +196,6 @@ class SQLiteStore:
             )
             return list(result.scalars().all())
 
-    async def list_saved_reports(self, limit: int = 50, offset: int = 0) -> List[DBReport]:
-        """
-        Alias for list_reports for compatibility with service layer expectations.
-        """
-        return await self.list_reports(limit=limit, offset=offset)
-
     async def get_report(self, report_id: str) -> Optional[DBReport]:
         async with AsyncSessionLocal() as session:
             result = await session.execute(

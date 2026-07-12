@@ -515,16 +515,17 @@ export default function App() {
     setStreamingMetadata(null);
 
     try {
-      // Send parameters via querystring to avoid issues with proxied JSON POSTs
-      const params = new URLSearchParams({
-        stream: String(ragStream),
-        query: ragQuery,
-        clearance_level: ragClearance,
-        user_role: currentUserRole,
-        user_id: currentUserId
+      const url = `/v3/query?stream=${ragStream}`;
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: ragQuery,
+          clearance_level: ragClearance,
+          user_role: currentUserRole,
+          user_id: currentUserId
+        })
       });
-      const url = `/v3/query?${params.toString()}`;
-      const response = await fetch(url, { method: "POST" });
 
       if (!response.ok) {
         const err = await response.json();
@@ -538,6 +539,7 @@ export default function App() {
         if (!reader) return;
 
         let buffer = "";
+        let currentEvent = "";
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -546,28 +548,25 @@ export default function App() {
           const lines = buffer.split("\n");
           buffer = lines.pop() || "";
 
-          // Parse SSE-style lines sequentially to avoid indexOf collisions
-          for (let i = 0; i < lines.length; i++) {
-            const raw = lines[i];
-            if (!raw) continue;
-            const lineTrim = raw.trim();
-            if (!lineTrim) continue;
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
 
-            if (lineTrim.startsWith("event:")) {
-              const eventType = lineTrim.replace("event:", "").trim();
-              const dataLine = (lines[i + 1] || "").trim();
-              if (dataLine.startsWith("data:")) {
-                try {
-                  const payload = JSON.parse(dataLine.replace(/^data:\s*/, ""));
-                  if (eventType === "token") {
-                    setStreamingText((prev) => prev + (payload.text || ""));
-                  } else if (eventType === "search_metadata" || eventType === "complete") {
-                    setStreamingMetadata((prev: any) => ({ ...prev, ...payload }));
-                  }
-                } catch (e) {
-                  // ignore malformed chunk
+            if (trimmed.startsWith("event:")) {
+              currentEvent = trimmed.replace("event:", "").trim();
+            } else if (trimmed.startsWith("data:")) {
+              const rawData = trimmed.replace("data:", "").trim();
+              try {
+                const payload = JSON.parse(rawData);
+                if (currentEvent === "token") {
+                  setStreamingText((prev) => prev + (payload.text || ""));
+                } else if (currentEvent === "complete") {
+                  setStreamingMetadata(payload);
+                } else if (currentEvent === "search_metadata") {
+                  setStreamingMetadata((prev: any) => ({ ...prev, ...payload }));
                 }
-                i++; // skip the data line we've just consumed
+              } catch (e) {
+                console.error("Error parsing SSE JSON data:", e, "Raw data:", rawData);
               }
             }
           }
@@ -951,7 +950,6 @@ export default function App() {
             {/* 1. TELEMETRY DASHBOARD */}
             {activeTab === "dashboard" && (
               <motion.div
-                key="tab-dashboard"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
@@ -1143,7 +1141,6 @@ export default function App() {
             {/* 2. HYBRID RAG CONSOLE */}
             {activeTab === "rag" && (
               <motion.div
-                key="tab-rag"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
@@ -1300,10 +1297,10 @@ export default function App() {
                               <div className="space-y-1">
                                 <div className="flex justify-between text-slate-400">
                                   <span>Reciprocal Rank Fusion (RRF):</span>
-                                  <span className="text-emerald-400 font-bold">{(match.rrf_score ?? 0).toFixed(6)}</span>
+                                  <span className="text-emerald-400 font-bold">{match.rrf_score.toFixed(6)}</span>
                                 </div>
                                 <div className="w-full bg-slate-800 h-1 rounded-full overflow-hidden">
-                                  <div className="bg-emerald-400 h-1 rounded-full" style={{ width: `${((match.rrf_score ?? 0) * 3000)}%` }}></div>
+                                  <div className="bg-emerald-400 h-1 rounded-full" style={{ width: `${(match.rrf_score * 3000)}%` }}></div>
                                 </div>
                               </div>
 
@@ -1311,10 +1308,10 @@ export default function App() {
                               <div className="space-y-1">
                                 <div className="flex justify-between text-slate-400">
                                   <span>FTS5 Lexical Word-Match Similarity:</span>
-                                  <span className="text-blue-400 font-bold">{((match.lexical_score ?? 0) * 100).toFixed(1)}%</span>
+                                  <span className="text-blue-400 font-bold">{(match.lexical_score * 100).toFixed(1)}%</span>
                                 </div>
                                 <div className="w-full bg-slate-800 h-1 rounded-full overflow-hidden">
-                                  <div className="bg-blue-400 h-1 rounded-full" style={{ width: `${((match.lexical_score ?? 0) * 100)}%` }}></div>
+                                  <div className="bg-blue-400 h-1 rounded-full" style={{ width: `${match.lexical_score * 100}%` }}></div>
                                 </div>
                               </div>
 
@@ -1322,10 +1319,10 @@ export default function App() {
                               <div className="space-y-1">
                                 <div className="flex justify-between text-slate-400">
                                   <span>ChromaDB Cosine Vector Similarity:</span>
-                                  <span className="text-amber-400 font-bold">{((match.vector_score ?? 0) * 100).toFixed(1)}%</span>
+                                  <span className="text-amber-400 font-bold">{(match.vector_score * 100).toFixed(1)}%</span>
                                 </div>
                                 <div className="w-full bg-slate-800 h-1 rounded-full overflow-hidden">
-                                  <div className="bg-amber-400 h-1 rounded-full" style={{ width: `${((match.vector_score ?? 0) * 100)}%` }}></div>
+                                  <div className="bg-amber-400 h-1 rounded-full" style={{ width: `${match.vector_score * 100}%` }}></div>
                                 </div>
                               </div>
                             </div>
@@ -1351,18 +1348,18 @@ export default function App() {
                               <span className="text-[10px] text-slate-500">ID: {match.id}</span>
                             </div>
 
-                              <div className="space-y-2 text-[11px]">
+                            <div className="space-y-2 text-[11px]">
                               <div className="flex justify-between text-slate-400">
                                 <span>RRF Score:</span>
-                                <span className="text-emerald-400 font-bold">{(match.rrf_score ?? 0).toFixed(6)}</span>
+                                <span className="text-emerald-400 font-bold">{match.rrf_score.toFixed(6)}</span>
                               </div>
                               <div className="flex justify-between text-slate-400">
                                 <span>Lexical FTS5:</span>
-                                <span className="text-blue-400 font-bold">{((match.lexical_score ?? 0) * 100).toFixed(1)}%</span>
+                                <span className="text-blue-400 font-bold">{(match.lexical_score * 100).toFixed(1)}%</span>
                               </div>
                               <div className="flex justify-between text-slate-400">
                                 <span>Vector Cosine:</span>
-                                <span className="text-amber-400 font-bold">{((match.vector_score ?? 0) * 100).toFixed(1)}%</span>
+                                <span className="text-amber-400 font-bold">{(match.vector_score * 100).toFixed(1)}%</span>
                               </div>
                             </div>
 
@@ -1418,7 +1415,6 @@ export default function App() {
             {/* 3. MULTI-AGENT CONSOLE WITH COLOR-CODED PIPELINE TRACE (Requirement 6) */}
             {activeTab === "agents" && (
               <motion.div
-                key="tab-agents"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
@@ -1646,7 +1642,6 @@ export default function App() {
             {/* 4. KNOWLEDGE GRAPH */}
             {activeTab === "graph" && (
               <motion.div
-                key="tab-graph"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
@@ -1808,7 +1803,6 @@ export default function App() {
             {/* 5. DATA INGESTION */}
             {activeTab === "ingest" && (
               <motion.div
-                key="tab-ingest"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
@@ -2043,7 +2037,6 @@ export default function App() {
             {/* 6. HUMAN-IN-THE-LOOP APPROVALS DECK (Requirement 9) */}
             {activeTab === "review" && (
               <motion.div
-                key="tab-review"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
@@ -2269,7 +2262,6 @@ export default function App() {
             {/* 7. LLD LOW-LEVEL DESIGN SYSTEM SPECIFICATION (Requirement 11) */}
             {activeTab === "docs" && (
               <motion.div
-                key="tab-docs"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}

@@ -4,9 +4,10 @@ Researcher Agent, Evidence Collector, and Graph Reasoner implementations.
 
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from piap.utils.ollama_client import genai, types
+from google import genai
+from google.genai import types
 
-from piap.config import GEMINI_API_KEY, USE_MOCK
+from piap.config import GEMINI_API_KEY
 from piap.agents.state_machine import AgentContextState, AgentLog, WorkflowState
 from piap.utils.logging import logger
 
@@ -19,7 +20,8 @@ class ResearcherAgent:
 
     def _get_client(self) -> genai.Client:
         if self._ai_client is None:
-            self._ai_client = genai.Client()
+            key = GEMINI_API_KEY or "DUMMY_KEY_FOR_TESTS"
+            self._ai_client = genai.Client(api_key=key)
         return self._ai_client
 
     def _log_action(self, state: AgentContextState, msg: str) -> None:
@@ -110,8 +112,8 @@ class ResearcherAgent:
                 f"Strictly avoid any claims that are not backed by the provided evidence."
             )
 
-            # If mock mode enabled, fallback
-            if USE_MOCK:
+            # If dummy offline key, fallback
+            if "DUMMY_KEY" in (GEMINI_API_KEY or "DUMMY_KEY"):
                 state.research_summary = (
                     f"Draft Research Summary:\n"
                     f"- Investigative evidence collected for query '{state.query}' indicates threat indicators matches. "
