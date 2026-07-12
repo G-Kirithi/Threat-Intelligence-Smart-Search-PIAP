@@ -515,17 +515,16 @@ export default function App() {
     setStreamingMetadata(null);
 
     try {
-      const url = `/v3/query?stream=${ragStream}`;
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query: ragQuery,
-          clearance_level: ragClearance,
-          user_role: currentUserRole,
-          user_id: currentUserId
-        })
+      // Send parameters via querystring to avoid issues with proxied JSON POSTs
+      const params = new URLSearchParams({
+        stream: String(ragStream),
+        query: ragQuery,
+        clearance_level: ragClearance,
+        user_role: currentUserRole,
+        user_id: currentUserId
       });
+      const url = `/v3/query?${params.toString()}`;
+      const response = await fetch(url, { method: "POST" });
 
       if (!response.ok) {
         const err = await response.json();
