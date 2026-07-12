@@ -32,8 +32,35 @@ async function startServer() {
   const PORT = 3000;
 
   // JSON and URL-encoded body parsers
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+  // Allow parsing of a broader set of content-types and increase limits for robustness behind proxies
+  app.use(express.json({ limit: "2mb", type: "*/*" }));
+  app.use(express.urlencoded({ extended: true, limit: "2mb" }));
+
+  // Fallback raw body parser: if JSON parsing didn't populate req.body, attempt to parse raw payload
+  app.use((req, res, next) => {
+    // Only attempt for methods that typically carry payloads
+    if (req.method === "POST" || req.method === "PUT" || req.method === "PATCH") {
+      // If body already parsed, continue
+      if (req.body && Object.keys(req.body).length > 0) return next();
+
+      let data = "";
+      req.on("data", chunk => {
+        try { data += chunk.toString(); } catch (e) { /* ignore */ }
+      });
+      req.on("end", () => {
+        if (!data) return next();
+        try {
+          req.body = JSON.parse(data);
+        } catch (e) {
+          // If not JSON, attach raw text for handlers that can handle it
+          (req as any).rawBody = data;
+        }
+        return next();
+      });
+    } else {
+      return next();
+    }
+  });
 
   console.log("[Manager] Booting Node.js-based unified threat intelligence backend...");
 
@@ -466,8 +493,47 @@ Return a JSON containing:
 
   // --- V3: HYBRID RETRIEVAL-AUGMENTED GENERATION (STREAMING & STRUCTURED) ---
   app.post("/v3/query", async (req, res) => {
-    const { query, clearance_level, user_role, user_id } = req.body;
+    // Robustly extract parameters from JSON body, URL query, or rawBody fallback
     const stream = req.query.stream === "true";
+
+    // Lightweight diagnostics for deployed troubleshooting (safe, non-sensitive)
+    console.log(`[v3/query] incoming request. method=${req.method} stream=${stream} bodyPresent=${!!req.body} rawBodyLen=${(req as any).rawBody ? (req as any).rawBody.length : 0}`);
+
+    // Attempt to pull params from multiple sources
+    let query: any = undefined;
+    let clearance_level: any = undefined;
+    let user_role: any = undefined;
+    let user_id: any = undefined;
+
+    // Prefer parsed JSON body
+    if (req.body && Object.keys(req.body).length > 0) {
+      query = req.body.query;
+      clearance_level = req.body.clearance_level;
+      user_role = req.body.user_role;
+      user_id = req.body.user_id;
+    }
+
+    // Fallback to querystring parameters
+    query = query || req.query.query;
+    clearance_level = clearance_level || req.query.clearance_level;
+    user_role = user_role || req.query.user_role;
+    user_id = user_id || req.query.user_id;
+
+    // Fallback to rawBody if present (some proxies may strip content-type)
+    if (!query && (req as any).rawBody) {
+      try {
+        const parsed = JSON.parse((req as any).rawBody);
+        query = parsed.query || query;
+        clearance_level = parsed.clearance_level || clearance_level;
+        user_role = parsed.user_role || user_role;
+        user_id = parsed.user_id || user_id;
+      } catch (e) {
+        // rawBody not JSON — if rawBody is plain text, treat it as the query string
+        if (typeof (req as any).rawBody === "string" && (req as any).rawBody.trim().length > 0) {
+          query = (req as any).rawBody.trim();
+        }
+      }
+    }
 
     if (!query) {
       return res.status(400).json({ detail: "Query is required." });
